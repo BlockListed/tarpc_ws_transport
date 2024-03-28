@@ -3,6 +3,9 @@ name = "tarpc_ws_transport"
 version = "0.1.0"
 license = "MIT"
 edition = "2021"
+description = "A WebSocket-based bincode transport for tarpc services"
+repository = "https://github.com/BlockListed/tarpc_ws_transport"
+keywords = ["network", "rpc", "websocket", "bincode", "tarpc"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -1,5 +1,7 @@
 use std::pin::Pin;
-use std::{fmt::Display, marker::PhantomData};
+use std::marker::PhantomData;
+
+use std::io::{Error, ErrorKind};
 
 use futures_util::{Sink, Stream};
 
@@ -8,22 +10,17 @@ use pin_project_lite::pin_project;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-#[derive(Debug)]
-pub struct Error(String);
-
-impl From<String> for Error {
-    fn from(value: String) -> Self {
-        Error(value)
-    }
+fn bincode2io_err(err: bincode::Error) -> Error {
+    Error::new(ErrorKind::InvalidData, err)
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
+fn axum2io_err(err: axum::Error) -> Error {
+    Error::new(ErrorKind::BrokenPipe, err)
 }
 
-impl std::error::Error for Error {}
+fn tungsten2io_err(err: tokio_tungstenite::tungstenite::Error) -> Error {
+    Error::new(ErrorKind::BrokenPipe, err)
+}
 
 pin_project! {
     pub struct ServerTransport<Req, Resp> {
@@ -55,12 +52,10 @@ where
     ) -> std::task::Poll<Option<Self::Item>> {
         self.project().ws.poll_next(cx).map(|r| match r? {
             Ok(m) => match m {
-                axum::extract::ws::Message::Binary(b) => Some(bincode::deserialize(&b).map_err(|e| e.to_string().into())),
-                _ => Some(Err("Only binary WebSocket messages are supported!"
-                    .to_string()
-                    .into())),
+                axum::extract::ws::Message::Binary(b) => Some(bincode::deserialize(&b).map_err(bincode2io_err)),
+                _ => Some(Err(Error::new(ErrorKind::InvalidData, "only Binary WebSocket messages are accepted")))
             },
-            Err(e) => Some(Err(e.to_string().into())),
+            Err(e) => Some(Err(axum2io_err(e))),
         })
     }
 }
@@ -69,7 +64,7 @@ impl<Req, Resp> Sink<Resp> for ServerTransport<Req, Resp>
 where
     Resp: Serialize,
 {
-    type Error = Error;
+    type Error = std::io::Error;
 
     fn poll_ready(
         self: Pin<&mut Self>,
@@ -78,16 +73,16 @@ where
         self.project()
             .ws
             .poll_ready(cx)
-            .map_err(|e| e.to_string().into())
+            .map_err(axum2io_err)
     }
 
     fn start_send(self: Pin<&mut Self>, item: Resp) -> Result<(), Self::Error> {
         self.project()
             .ws
             .start_send(axum::extract::ws::Message::Binary(
-                bincode::serialize(&item).map_err(|e| e.to_string())?,
+                bincode::serialize(&item).map_err(bincode2io_err)?,
             ))
-            .map_err(|e| e.to_string().into())
+            .map_err(axum2io_err)
     }
 
     fn poll_flush(
@@ -97,7 +92,7 @@ where
         self.project()
             .ws
             .poll_flush(cx)
-            .map_err(|e| e.to_string().into())
+            .map_err(axum2io_err)
     }
 
     fn poll_close(
@@ -107,7 +102,7 @@ where
         self.project()
             .ws
             .poll_close(cx)
-            .map_err(|e| e.to_string().into())
+            .map_err(axum2io_err)
     }
 }
 
@@ -144,13 +139,11 @@ where
         self.project().ws.poll_next(cx).map(|m| match m? {
             Ok(m) => match m {
                 tokio_tungstenite::tungstenite::protocol::Message::Binary(b) => {
-                    Some(bincode::deserialize(&b).map_err(|e| e.to_string().into()))
+                    Some(bincode::deserialize(&b).map_err(bincode2io_err))
                 }
-                _ => Some(Err("Only binary WebSocket messages are supported!"
-                    .to_string()
-                    .into())),
+                _ => Some(Err(Error::new(ErrorKind::InvalidData, "only Binary WebSocket messages are accepted"))),
             },
-            Err(e) => Some(Err(e.to_string().into())),
+            Err(e) => Some(Err(tungsten2io_err(e))),
         })
     }
 }
@@ -160,7 +153,7 @@ where
     Req: Serialize,
     Io: AsyncRead + AsyncWrite + Unpin,
 {
-    type Error = Error;
+    type Error = std::io::Error;
 
     fn poll_ready(
         self: Pin<&mut Self>,
@@ -169,16 +162,16 @@ where
         self.project()
             .ws
             .poll_ready(cx)
-            .map_err(|e| e.to_string().into())
+            .map_err(tungsten2io_err)
     }
 
     fn start_send(self: Pin<&mut Self>, item: Req) -> Result<(), Self::Error> {
         self.project()
             .ws
             .start_send(tokio_tungstenite::tungstenite::protocol::Message::Binary(
-                bincode::serialize(&item).map_err(|e| e.to_string())?,
+                bincode::serialize(&item).map_err(bincode2io_err)?,
             ))
-            .map_err(|e| e.to_string().into())
+            .map_err(tungsten2io_err)
     }
 
     fn poll_flush(
@@ -188,7 +181,7 @@ where
         self.project()
             .ws
             .poll_flush(cx)
-            .map_err(|e| e.to_string().into())
+            .map_err(tungsten2io_err)
     }
 
     fn poll_close(
@@ -198,6 +191,6 @@ where
         self.project()
             .ws
             .poll_close(cx)
-            .map_err(|e| e.to_string().into())
+            .map_err(tungsten2io_err)
     }
 }
