@@ -1,0 +1,15 @@
+[package]
+name = "example_service"
+version = "0.1.0"
+license = "MIT"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tarpc = { version = "0.34.0", features = ["tokio1", "serde1"] }
+tarpc_ws_transport = { version = "0.1.0", path = "../tarpc_ws_transport" }
+axum = "0.7.5"
+tokio-tungstenite = "0.21.0"
+futures-util = "0.3.30"
