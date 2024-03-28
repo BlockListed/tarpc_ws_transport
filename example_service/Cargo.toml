@@ -13,3 +13,4 @@ tarpc_ws_transport = { version = "0.1.0", path = "../tarpc_ws_transport" }
 axum = "0.7.5"
 tokio-tungstenite = "0.21.0"
 futures-util = "0.3.30"
+tokio-retry = "0.3.0"
